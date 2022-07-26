@@ -280,8 +280,8 @@ public class RetryTemplate implements RetryOperations {
 			this.logger.trace("RetryContext retrieved: " + context);
 		}
 
-		// Make sure the context is available globally for clients who need
-		// it...
+		// Make sure the context is available globally for clients who need it...
+		// ThreadLocal 实现
 		RetrySynchronizationManager.register(context);
 
 		Throwable lastException = null;
@@ -290,6 +290,7 @@ public class RetryTemplate implements RetryOperations {
 		try {
 
 			// Give clients a chance to enhance the context...
+			// 执行, listener.open
 			boolean running = doOpenInterceptors(retryCallback, context);
 
 			if (!running) {
@@ -333,21 +334,24 @@ public class RetryTemplate implements RetryOperations {
 					lastException = e;
 
 					try {
+						// error count+1
 						registerThrowable(retryPolicy, state, context, e);
 					}
 					catch (Exception ex) {
 						throw new TerminatedRetryException("Could not register throwable", ex);
 					}
 					finally {
+						// 执行, listener.onError
 						doOnErrorInterceptors(retryCallback, context, e);
 					}
 
 					if (canRetry(retryPolicy, context) && !context.isExhaustedOnly()) {
 						try {
+							// 等待一段时间，才重试
 							backOffPolicy.backOff(backOffContext);
 						}
 						catch (BackOffInterruptedException ex) {
-							lastException = e;
+							// lastException = e;
 							// back off was prevented by another thread - fail the retry
 							if (this.logger.isDebugEnabled()) {
 								this.logger.debug("Abort retry because interrupted: count=" + context.getRetryCount());
@@ -391,8 +395,11 @@ public class RetryTemplate implements RetryOperations {
 			throw RetryTemplate.<E>wrapIfNecessary(e);
 		}
 		finally {
+			// retryPolicy.close
 			close(retryPolicy, context, state, lastException == null || exhausted);
+			// 执行, listener.close
 			doCloseInterceptors(retryCallback, context, lastException);
+			// ThreadLocal 实现
 			RetrySynchronizationManager.clear();
 		}
 
